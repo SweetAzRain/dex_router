@@ -11,7 +11,7 @@ import { AlertCircle, ArrowUpDown, Settings, History, ChevronDown, TrendingUp, A
 import { TokenSelectModal } from "./token-select-modal";
 import { useWallet } from "@/hooks/use-wallet"; // Убедитесь в правильном пути
 import { useRoutes } from "@/hooks/use-routes"; // Убедитесь в правильном пути
-import { useTokenBalances } from "@/hooks/use-token-balances"; // Новый хук
+//import { useTokenBalances } from "@/hooks/use-token-balances"; // Новый хук
 import { TokenInfo } from "@/types/near"; // Убедитесь в правильном пути
 import { intearAPI } from "@/services/intear-api"; // Убедитесь в правильном пути
 import { useToast } from "@/hooks/use-toast";
