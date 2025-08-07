@@ -9,11 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AlertCircle, ArrowUpDown, Settings, History, ChevronDown, TrendingUp, AlertTriangle } from "lucide-react";
 import { TokenSelectModal } from "./token-select-modal";
-import { useWallet } from "../../hooks/use-wallet"; // Убедитесь в правильном пути
-import { useRoutes } from "../../hooks/use-routes"; // Убедитесь в правильном пути
-import { useTokenBalances } from "../../hooks/use-token-balances"; // Новый хук
-import { TokenInfo } from "../../types/near"; // Убедитесь в правильном пути
-import { intearAPI } from "../../services/intear-api"; // Убедитесь в правильном пути
+import { useWallet } from "@/hooks/use-wallet"; // Убедитесь в правильном пути
+import { useRoutes } from "@/hooks/use-routes"; // Убедитесь в правильном пути
+import { useTokenBalances } from "@/hooks/use-token-balances"; // Новый хук
+import { TokenInfo } from "@/types/near"; // Убедитесь в правильном пути
+import { intearAPI } from "@/services/intear-api"; // Убедитесь в правильном пути
 import { useToast } from "@/hooks/use-toast";
 
 // Предполагаемый тип RouteInfo, уточните в соответствии с вашими типами
