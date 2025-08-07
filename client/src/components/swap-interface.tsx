@@ -19,12 +19,14 @@ import { useToast } from "@/hooks/use-toast";
 // Предполагаемый тип RouteInfo, уточните в соответствии с вашими типами
 // import { RouteInfo } from "../../types/near";
 
-const DEFAULT_TOKENS: TokenInfo[] = [
+
+// Создайте его вне компонента как константу
+const DEFAULT_TOKENS: readonly TokenInfo[] = [
   {
     id: "wrap.near",
     symbol: "NEAR",
     name: "NEAR Protocol",
-    decimals: 24, // Для NEAR используем 24, для отображения можно форматировать до 6
+    decimals: 24,
     isNative: true,
     balance: "0",
     usdValue: "0.00",
@@ -49,7 +51,7 @@ const DEFAULT_TOKENS: TokenInfo[] = [
     balance: "0",
     usdValue: "0.00",
   },
-];
+] as const; // as const делает массив иммутабельным
 
 export function SwapInterface() {
   // Используем useWallet из вашего хука
