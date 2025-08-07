@@ -6,22 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { AlertCircle, ArrowUpDown, Settings, History, ChevronDown, TrendingUp, AlertTriangle } from "lucide-react";
 import { TokenSelectModal } from "./token-select-modal";
-import { useWallet } from "@/hooks/use-wallet"; // Убедитесь в правильном пути
-import { useRoutes } from "@/hooks/use-routes"; // Убедитесь в правильном пути
-import { useTokenBalances } from "@/hooks/use-token-balances"; // Новый хук
-import { TokenInfo } from "@/types/near"; // Убедитесь в правильном пути
-import { intearAPI } from "@/services/intear-api"; // Убедитесь в правильном пути
+import { useWallet } from "@/hooks/use-wallet";
+import { useRoutes } from "@/hooks/use-routes";
+import { useTokenBalances } from "@/hooks/use-token-balances";
+import { TokenInfo } from "@/types/near";
+import { RouteInfo } from "@/types/near";
+import { intearAPI } from "@/services/intear-api";
+import { nearIntents } from "@/services/near-intents";
 import { useToast } from "@/hooks/use-toast";
 
-// Предполагаемый тип RouteInfo, уточните в соответствии с вашими типами
-// import { RouteInfo } from "../../types/near";
+// Типы для Near Intents
+interface IntentPublication {
+  quote_hashes: string[];
+  signed_data: {
+    standard: string;
+    payload: any;
+    signature: string;
+    public_key: string;
+  };
+}
 
-
-// Создайте его вне компонента как константу
-const DEFAULT_TOKENS: readonly TokenInfo[] = [
+const DEFAULT_TOKENS: TokenInfo[] = [
   {
     id: "wrap.near",
     symbol: "NEAR",
@@ -51,11 +58,10 @@ const DEFAULT_TOKENS: readonly TokenInfo[] = [
     balance: "0",
     usdValue: "0.00",
   },
-] as const; // as const делает массив иммутабельным
+];
 
 export function SwapInterface() {
-  // Используем useWallet из вашего хука
-  const { wallet, signTransaction, signMessage } = useWallet(); 
+  const { wallet, signTransaction, signMessage } = useWallet();
   const { toast } = useToast();
   
   const [fromToken, setFromToken] = useState<TokenInfo>(DEFAULT_TOKENS[0]);
@@ -68,13 +74,9 @@ export function SwapInterface() {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"from" | "to">("from");
   const [isSwapping, setIsSwapping] = useState(false);
-  // --- Новое состояние для выбранного маршрута ---
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  // --- Конец нового состояния ---
 
-  // --- Использование нового хука для балансов ---
   const { balances, isLoading: balancesLoading, error: balancesError, refetch: refetchBalances } = useTokenBalances(DEFAULT_TOKENS);
-  // --- Конец использования нового хука ---
 
   const routeRequest = amountIn && fromToken && toToken ? {
     tokenIn: fromToken.id,
@@ -89,50 +91,44 @@ export function SwapInterface() {
       )
     },
     traderAccountId: wallet.accountId || undefined,
-    signingPublicKey: undefined, // Will be set when needed
+    signingPublicKey: undefined,
   } : null;
 
-  // Debug log for route request
   useEffect(() => {
     if (routeRequest) {
       console.log('Route request created:', routeRequest);
     }
   }, [routeRequest]);
 
-  const { data: routes, isLoading: routesLoading, error: routesError } = useRoutes(routeRequest, !!amountIn);
+  // ИСПРАВЛЕНО: Правильная деструктуризация результата useRoutes
+  const { data: routesData, isLoading: routesLoading, error: routesError } = useRoutes(routeRequest, !!amountIn);
 
-  // Debug logging for routes
   useEffect(() => {
     console.log('Routes loading:', routesLoading);
-    console.log('Routes data:', routes);
+    console.log('Routes data:', routesData);
     console.log('Routes error:', routesError);
-  }, [routes, routesLoading, routesError]);
+  }, [routesData, routesLoading, routesError]);
 
-  // --- Обновление балансов после свапа ---
   useEffect(() => {
     if (!isSwapping && wallet.isConnected) {
-       // Небольшая задержка перед обновлением, чтобы блокчейн успел обновиться
        const timer = setTimeout(() => {
          refetchBalances();
-       }, 2000); // 2 секунды
+       }, 2000);
        return () => clearTimeout(timer);
     }
   }, [isSwapping, wallet.isConnected, refetchBalances]);
-  // --- Конец обновления балансов ---
 
-  // Update output amount when routes change
   useEffect(() => {
-    if (routes && routes.length > 0) {
-      // Если маршрут еще не выбран, выбираем лучший
+    if (routesData && routesData.length > 0) {
       if (!selectedRouteId) {
-        const bestRoute = intearAPI.getBestRoute(routes);
+        const bestRoute = intearAPI.getBestRoute(routesData);
         if (bestRoute) {
-          setSelectedRouteId(bestRoute.dex_id); // Используем dex_id как идентификатор
+          setSelectedRouteId(bestRoute.dex_id);
         }
       }
       
-      // Находим выбранный маршрут
-      const selectedRoute = routes.find(route => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routes);
+      // ИСПРАВЛЕНО: Явные типы для параметров
+      const selectedRoute = routesData.find((route: RouteInfo) => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routesData);
       
       if (selectedRoute) {
         const formatted = intearAPI.formatAmount(selectedRoute.estimated_amount.amount_out, toToken.decimals);
@@ -143,9 +139,9 @@ export function SwapInterface() {
       }
     } else {
       setAmountOut("");
-      setSelectedRouteId(null); // Сбросить выбор, если маршруты исчезли
+      setSelectedRouteId(null);
     }
-  }, [routes, selectedRouteId, toToken.decimals]);
+  }, [routesData, selectedRouteId, toToken.decimals]);
 
   const handleSwapTokens = () => {
     const tempToken = fromToken;
@@ -153,37 +149,29 @@ export function SwapInterface() {
     setToToken(tempToken);
     setAmountIn(amountOut);
     setAmountOut("");
-    // Сбросить выбор маршрута при смене токенов
     setSelectedRouteId(null);
   };
 
   const handleSelectToken = (token: TokenInfo) => {
     if (selectingToken === "from") {
       if (token.id === toToken.id) {
-        // Swap tokens if selecting the same token
         setToToken(fromToken);
       }
       setFromToken(token);
     } else {
       if (token.id === fromToken.id) {
-        // Swap tokens if selecting the same token
         setFromToken(toToken);
       }
       setToToken(token);
     }
-    // Сбросить выбор маршрута при смене токенов
     setSelectedRouteId(null);
   };
 
-  // --- Функция для выбора маршрута ---
   const handleSelectRoute = (dexId: string) => {
     setSelectedRouteId(dexId);
-    // amountOut будет обновлен через useEffect выше
   };
-  // --- Конец функции для выбора маршрута ---
 
   const executeSwap = async () => {
-    // Проверка подключения через useWallet
     if (!wallet.isConnected || !wallet.accountId) {
       toast({
         title: "Wallet not connected",
@@ -192,7 +180,7 @@ export function SwapInterface() {
       });
       return;
     }
-    if (!routes || routes.length === 0) {
+    if (!routesData || routesData.length === 0) {
       toast({
         title: "No routes available",
         description: "Please try adjusting your swap parameters",
@@ -201,8 +189,8 @@ export function SwapInterface() {
       return;
     }
     
-    // Находим выбранный маршрут
-    const selectedRoute = routes.find(route => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routes);
+    // ИСПРАВЛЕНО: Явные типы для параметров
+    const selectedRoute = routesData.find((route: RouteInfo) => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routesData);
     if (!selectedRoute) {
       toast({
         title: "No route selected",
@@ -214,69 +202,101 @@ export function SwapInterface() {
 
     setIsSwapping(true);
     try {
-      // Выполняем свап, используя функции из useWallet
       for (const instruction of selectedRoute.execution_instructions) {
         if (instruction.NearTransaction) {
-          // Выполняем NEAR транзакцию используя signTransaction из useWallet
-          // Формат params должен соответствовать SignAndSendTransactionParams из @hot-labs/near-connect
           const txParams = {
             receiverId: instruction.NearTransaction.receiver_id,
-            actions: instruction.NearTransaction.actions.map(action => {
+            actions: instruction.NearTransaction.actions.map((action: any) => {
               if (action.FunctionCall) {
                 return {
-                  type: 'FunctionCall' as const, // Убедитесь, что это правильный тип
+                  type: 'FunctionCall' as const,
                   params: {
                     methodName: action.FunctionCall.method_name,
-                    args: JSON.parse(atob(action.FunctionCall.args)), // Декодируем base64
+                    args: JSON.parse(atob(action.FunctionCall.args)),
                     gas: action.FunctionCall.gas,
                     deposit: action.FunctionCall.deposit,
                   }
                 };
               }
-              // Обработайте другие типы действий, если необходимо (Transfer, etc.)
-              // Например, для Transfer:
-              // if (action.Transfer) {
-              //   return {
-              //     type: 'Transfer' as const,
-              //     params: {
-              //       deposit: action.Transfer.deposit,
-              //     }
-              //   };
-              // }
               throw new Error(`Unsupported action type: ${Object.keys(action)[0]}`);
             })
           };
 
           console.log('Sending transaction with params:', txParams);
-          const result = await signTransaction(txParams); // <-- Используем signTransaction из useWallet
+          const result = await signTransaction(txParams);
           console.log('Transaction result:', result);
 
         } else if (instruction.IntentsQuote) {
-          // Выполняем NEAR Intents quote используя signMessage из useWallet
-          // signMessage из useWallet пока не реализован, вам нужно будет добавить его в use-wallets.ts
-          // или вызвать напрямую из useNearWallet, если он там реализован.
-          
-          // Временное решение: покажем ошибку, если signMessage не реализован
-          if (!signMessage) {
-             throw new Error('Sign message functionality is not yet implemented in useWallet hook.');
+          try {
+            if (!signMessage) {
+               throw new Error('Sign message functionality is not available.');
+            }
+            
+            // Анализируем message_to_sign из API
+            let messageToSignData: any;
+            try {
+              messageToSignData = JSON.parse(instruction.IntentsQuote.message_to_sign);
+            } catch (parseError) {
+              console.error("Failed to parse message_to_sign as JSON:", instruction.IntentsQuote.message_to_sign);
+              messageToSignData = instruction.IntentsQuote.message_to_sign;
+            }
+            
+            console.log("Near Intents message to sign ", messageToSignData);
+
+            // Подписываем сообщение
+            let signedMessage: any;
+            if (typeof messageToSignData === 'string') {
+              signedMessage = await signMessage({ 
+                message: messageToSignData, 
+                recipient: 'intents.near'
+              });
+            } else if (typeof messageToSignData === 'object' && messageToSignData.message) {
+              signedMessage = await signMessage({ 
+                message: messageToSignData.message,
+                recipient: messageToSignData.recipient || 'intents.near',
+                nonce: messageToSignData.nonce ? new Uint8Array(Object.values(messageToSignData.nonce)) : undefined
+              });
+            } else {
+               const messageString = typeof messageToSignData === 'object' ? JSON.stringify(messageToSignData) : String(messageToSignData);
+               signedMessage = await signMessage({ 
+                message: messageString, 
+                recipient: 'intents.near'
+               });
+            }
+            
+            console.log("Near Intents signed message result:", signedMessage);
+
+            // Подготавливаем данные для публикации
+            const publication: IntentPublication = {
+              quote_hashes: [instruction.IntentsQuote.quote_hash],
+              signed_data: {
+                standard: (signedMessage as any).signatureType || 'nep413',
+                payload: (signedMessage as any).payload || signedMessage,
+                signature: (signedMessage as any).signature,
+                public_key: (signedMessage as any).publicKey || (signedMessage as any).public_key,
+              }
+            };
+
+            console.log("Near Intents publication ", publication);
+
+            // Публикуем интент через наш сервис
+            const publishResult = await nearIntents.publishIntent(publication);
+            console.log('Near Intents published:', publishResult);
+
+            toast({
+              title: "Intent submitted",
+              description: `Your swap intent has been sent to the solver. Intent hash: ${publishResult.intent_hash.substring(0, 8)}...`,
+            });
+
+          } catch (error: any) {
+            console.error('Near Intents swap failed:', error);
+            toast({
+              title: "Near Intents swap failed",
+              description: error.message || error.toString() || "An unexpected error occurred",
+              variant: "destructive",
+            });
+            throw error;
           }
-          
-          // Вам нужно будет уточнить формат параметров для signMessage
-          // в зависимости от того, как он реализован в near-connect.
-          // Возможно, потребуется что-то вроде:
-          /*
-          const signedMessage = await signMessage(
-            instruction.IntentsQuote.message_to_sign,
-            'intents.near'
-          );
-          // Затем отправить signedMessage в nearIntents.publishIntent
-          // const intentResult = await nearIntents.publishIntent({
-          //   quote_hashes: [instruction.IntentsQuote.quote_hash],
-          //   signed_data: signedMessage
-          // });
-          // console.log('Intent result:', intentResult);
-          */
-          throw new Error('NEAR Intents signing is not yet fully implemented in this example. Please check the signMessage implementation.');
         }
       }
 
@@ -284,11 +304,9 @@ export function SwapInterface() {
         title: "Swap executed successfully",
         description: `Swapped ${amountIn} ${fromToken.symbol} for ${amountOut} ${toToken.symbol}`,
       });
-      // Reset form
       setAmountIn("");
       setAmountOut("");
-      setSelectedRouteId(null); // Сбросить выбор маршрута
-      // Балансы будут обновлены через useEffect выше
+      setSelectedRouteId(null);
     } catch (error: any) {
       console.error('Swap failed:', error);
       toast({
@@ -305,19 +323,13 @@ export function SwapInterface() {
     if (!wallet.isConnected) return "Connect Wallet";
     if (!amountIn) return "Enter an amount";
     if (routesLoading) return "Finding best route...";
-    // Убираем это условие, чтобы кнопка была активна даже без маршрутов
-    // if (!routes || routes.length === 0) return "No route available"; 
     if (isSwapping) return "Swapping...";
     return "Swap Tokens";
   };
 
-  // Разрешаем свап даже если маршруты не найдены, кнопка будет неактивна из-за других условий
   const isSwapDisabled = !wallet.isConnected || !amountIn || routesLoading || isSwapping;
 
-  // --- Подготовка данных для отображения маршрутов ---
-  // Лучший маршрут для отображения в summary
-  const bestRoute = routes && routes.length > 0 ? intearAPI.getBestRoute(routes) : null;
-  // --- Конец подготовки данных для отображения маршрутов ---
+  const bestRoute = routesData && routesData.length > 0 ? intearAPI.getBestRoute(routesData) : null;
 
   return (
     <Card className="w-full max-w-2xl" data-testid="card-swap-interface">
@@ -480,7 +492,7 @@ export function SwapInterface() {
           </div>
         </div>
         
-        {/* Route Comparison - Исправленный блок отображения маршрутов */}
+        {/* Route Comparison */}
         {amountIn && (
           <div className="mt-6">
             {routesLoading ? (
@@ -496,7 +508,7 @@ export function SwapInterface() {
                   <span>Error loading routes: {routesError.message || 'Unknown error'}</span>
                 </CardContent>
               </Card>
-            ) : routes && routes.length > 0 ? (
+            ) : routesData && routesData.length > 0 ? (
               <>
                 {/* Best Route Summary */}
                 {bestRoute && (
@@ -540,7 +552,8 @@ export function SwapInterface() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {routes.map((route, index) => {
+                      {/* ИСПРАВЛЕНО: Явные типы для параметров */}
+                      {routesData.map((route: RouteInfo, index: number) => {
                         const isSelected = route.dex_id === selectedRouteId;
                         const isBest = bestRoute && route.dex_id === bestRoute.dex_id;
                         return (

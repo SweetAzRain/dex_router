@@ -1,4 +1,4 @@
-// use-wallet.ts
+// client/src/hooks/use-wallets.ts
 import { useNearWallet } from "./use-near-wallet";
 
 export function useWallet() {
@@ -10,7 +10,7 @@ export function useWallet() {
     connectWallet, 
     disconnectWallet, 
     signAndSendTransaction,
-    signMessage // <-- ДОБАВИЛИ
+    signMessage // <-- Убедиться, что это импортируется из useNearWallet
   } = useNearWallet();
 
   const wallet = {
@@ -31,7 +31,7 @@ export function useWallet() {
     signTransaction: signAndSendTransaction,
     signTransactions: signAndSendTransaction, // For now, same as single transaction
     // Используем signMessage из useNearWallet
-    signMessage: signMessage, // <-- ОБНОВИЛИ
+    signMessage: signMessage, // <-- ИСПРАВЛЕНО: используем реальную функцию
     // Альтернативно, можно обернуть в асинхронную функцию, если нужна другая сигнатура
     // signMessage: async (message: string, recipient: string, nonce?: Uint8Array) => {
     //   // Проверка подключения
