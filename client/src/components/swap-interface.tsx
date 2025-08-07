@@ -1,26 +1,30 @@
 // client/src/components/swap/swap-interface.tsx
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowUpDown, Settings, History, ChevronDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { AlertCircle, ArrowUpDown, Settings, History, ChevronDown, TrendingUp, AlertTriangle } from "lucide-react";
 import { TokenSelectModal } from "./token-select-modal";
-import { useWallet } from "@/hooks/use-wallet"; // Убедитесь в правильном пути
-import { useRoutes } from "@/hooks/use-routes"; // Убедитесь в правильном пути
-import { TokenInfo } from "@/types/near"; // Убедитесь в правильном пути
-import { intearAPI } from "@/services/intear-api"; // Убедитесь в правильном пути
-// import { nearWalletService } from "../services/near-wallet"; // УБРАТЬ
-// import { nearIntents } from "../services/near-intents"; // УБРАТЬ - предположительно, будет использоваться через useWallet или напрямую
+import { useWallet } from "../../hooks/use-wallet"; // Убедитесь в правильном пути
+import { useRoutes } from "../../hooks/use-routes"; // Убедитесь в правильном пути
+import { useTokenBalances } from "../../hooks/use-token-balances"; // Новый хук
+import { TokenInfo } from "../../types/near"; // Убедитесь в правильном пути
+import { intearAPI } from "../../services/intear-api"; // Убедитесь в правильном пути
 import { useToast } from "@/hooks/use-toast";
+
+// Предполагаемый тип RouteInfo, уточните в соответствии с вашими типами
+// import { RouteInfo } from "../../types/near";
 
 const DEFAULT_TOKENS: TokenInfo[] = [
   {
     id: "wrap.near",
     symbol: "NEAR",
     name: "NEAR Protocol",
-    decimals: 24,
+    decimals: 24, // Для NEAR используем 24, для отображения можно форматировать до 6
     isNative: true,
     balance: "0",
     usdValue: "0.00",
@@ -51,6 +55,7 @@ export function SwapInterface() {
   // Используем useWallet из вашего хука
   const { wallet, signTransaction, signMessage } = useWallet(); 
   const { toast } = useToast();
+  
   const [fromToken, setFromToken] = useState<TokenInfo>(DEFAULT_TOKENS[0]);
   const [toToken, setToToken] = useState<TokenInfo>(DEFAULT_TOKENS[1]);
   const [amountIn, setAmountIn] = useState("");
@@ -61,6 +66,13 @@ export function SwapInterface() {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"from" | "to">("from");
   const [isSwapping, setIsSwapping] = useState(false);
+  // --- Новое состояние для выбранного маршрута ---
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  // --- Конец нового состояния ---
+
+  // --- Использование нового хука для балансов ---
+  const { balances, isLoading: balancesLoading, error: balancesError, refetch: refetchBalances } = useTokenBalances(DEFAULT_TOKENS);
+  // --- Конец использования нового хука ---
 
   const routeRequest = amountIn && fromToken && toToken ? {
     tokenIn: fromToken.id,
@@ -94,19 +106,44 @@ export function SwapInterface() {
     console.log('Routes error:', routesError);
   }, [routes, routesLoading, routesError]);
 
+  // --- Обновление балансов после свапа ---
+  useEffect(() => {
+    if (!isSwapping && wallet.isConnected) {
+       // Небольшая задержка перед обновлением, чтобы блокчейн успел обновиться
+       const timer = setTimeout(() => {
+         refetchBalances();
+       }, 2000); // 2 секунды
+       return () => clearTimeout(timer);
+    }
+  }, [isSwapping, wallet.isConnected, refetchBalances]);
+  // --- Конец обновления балансов ---
+
   // Update output amount when routes change
   useEffect(() => {
     if (routes && routes.length > 0) {
-      const bestRoute = intearAPI.getBestRoute(routes);
-      if (bestRoute) {
-        const formatted = intearAPI.formatAmount(bestRoute.estimated_amount.amount_out, toToken.decimals);
+      // Если маршрут еще не выбран, выбираем лучший
+      if (!selectedRouteId) {
+        const bestRoute = intearAPI.getBestRoute(routes);
+        if (bestRoute) {
+          setSelectedRouteId(bestRoute.dex_id); // Используем dex_id как идентификатор
+        }
+      }
+      
+      // Находим выбранный маршрут
+      const selectedRoute = routes.find(route => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routes);
+      
+      if (selectedRoute) {
+        const formatted = intearAPI.formatAmount(selectedRoute.estimated_amount.amount_out, toToken.decimals);
         setAmountOut(formatted);
         console.log('Setting amountOut:', formatted);
+      } else {
+        setAmountOut("");
       }
     } else {
       setAmountOut("");
+      setSelectedRouteId(null); // Сбросить выбор, если маршруты исчезли
     }
-  }, [routes, toToken.decimals]);
+  }, [routes, selectedRouteId, toToken.decimals]);
 
   const handleSwapTokens = () => {
     const tempToken = fromToken;
@@ -114,6 +151,8 @@ export function SwapInterface() {
     setToToken(tempToken);
     setAmountIn(amountOut);
     setAmountOut("");
+    // Сбросить выбор маршрута при смене токенов
+    setSelectedRouteId(null);
   };
 
   const handleSelectToken = (token: TokenInfo) => {
@@ -130,7 +169,16 @@ export function SwapInterface() {
       }
       setToToken(token);
     }
+    // Сбросить выбор маршрута при смене токенов
+    setSelectedRouteId(null);
   };
+
+  // --- Функция для выбора маршрута ---
+  const handleSelectRoute = (dexId: string) => {
+    setSelectedRouteId(dexId);
+    // amountOut будет обновлен через useEffect выше
+  };
+  // --- Конец функции для выбора маршрута ---
 
   const executeSwap = async () => {
     // Проверка подключения через useWallet
@@ -150,15 +198,22 @@ export function SwapInterface() {
       });
       return;
     }
+    
+    // Находим выбранный маршрут
+    const selectedRoute = routes.find(route => route.dex_id === selectedRouteId) || intearAPI.getBestRoute(routes);
+    if (!selectedRoute) {
+      toast({
+        title: "No route selected",
+        description: "Please select a route to swap",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSwapping(true);
     try {
-      const bestRoute = intearAPI.getBestRoute(routes);
-      if (!bestRoute) {
-        throw new Error("No valid route found");
-      }
-
       // Выполняем свап, используя функции из useWallet
-      for (const instruction of bestRoute.execution_instructions) {
+      for (const instruction of selectedRoute.execution_instructions) {
         if (instruction.NearTransaction) {
           // Выполняем NEAR транзакцию используя signTransaction из useWallet
           // Формат params должен соответствовать SignAndSendTransactionParams из @hot-labs/near-connect
@@ -230,6 +285,8 @@ export function SwapInterface() {
       // Reset form
       setAmountIn("");
       setAmountOut("");
+      setSelectedRouteId(null); // Сбросить выбор маршрута
+      // Балансы будут обновлены через useEffect выше
     } catch (error: any) {
       console.error('Swap failed:', error);
       toast({
@@ -246,12 +303,19 @@ export function SwapInterface() {
     if (!wallet.isConnected) return "Connect Wallet";
     if (!amountIn) return "Enter an amount";
     if (routesLoading) return "Finding best route...";
-    if (!routes || routes.length === 0) return "No route available";
+    // Убираем это условие, чтобы кнопка была активна даже без маршрутов
+    // if (!routes || routes.length === 0) return "No route available"; 
     if (isSwapping) return "Swapping...";
     return "Swap Tokens";
   };
 
-  const isSwapDisabled = !wallet.isConnected || !amountIn || routesLoading || !routes?.length || isSwapping;
+  // Разрешаем свап даже если маршруты не найдены, кнопка будет неактивна из-за других условий
+  const isSwapDisabled = !wallet.isConnected || !amountIn || routesLoading || isSwapping;
+
+  // --- Подготовка данных для отображения маршрутов ---
+  // Лучший маршрут для отображения в summary
+  const bestRoute = routes && routes.length > 0 ? intearAPI.getBestRoute(routes) : null;
+  // --- Конец подготовки данных для отображения маршрутов ---
 
   return (
     <Card className="w-full max-w-2xl" data-testid="card-swap-interface">
@@ -273,7 +337,7 @@ export function SwapInterface() {
             <div className="flex justify-between items-center mb-2">
               <Label className="text-sm font-medium text-gray-700">From</Label>
               <span className="text-sm text-gray-500" data-testid="text-from-balance">
-                Balance: {parseFloat(fromToken.balance).toFixed(6)}
+                Balance: {balancesLoading ? 'Loading...' : (balances[fromToken.id] ? parseFloat(balances[fromToken.id]).toFixed(6) : '0.000000')}
               </span>
             </div>
             <div className="flex items-center space-x-4">
@@ -332,7 +396,7 @@ export function SwapInterface() {
             <div className="flex justify-between items-center mb-2">
               <Label className="text-sm font-medium text-gray-700">To</Label>
               <span className="text-sm text-gray-500" data-testid="text-to-balance">
-                Balance: {parseFloat(toToken.balance).toFixed(6)}
+                 Balance: {balancesLoading ? 'Loading...' : (balances[toToken.id] ? parseFloat(balances[toToken.id]).toFixed(6) : '0.000000')}
               </span>
             </div>
             <div className="flex items-center space-x-4">
@@ -413,6 +477,127 @@ export function SwapInterface() {
             />
           </div>
         </div>
+        
+        {/* Route Comparison - Исправленный блок отображения маршрутов */}
+        {amountIn && (
+          <div className="mt-6">
+            {routesLoading ? (
+              <Card>
+                <CardContent className="text-center py-4">
+                  <p>Finding best routes...</p>
+                </CardContent>
+              </Card>
+            ) : routesError ? (
+              <Card>
+                <CardContent className="text-center py-4 text-red-500">
+                  <AlertCircle className="h-5 w-5 inline mr-2" />
+                  <span>Error loading routes: {routesError.message || 'Unknown error'}</span>
+                </CardContent>
+              </Card>
+            ) : routes && routes.length > 0 ? (
+              <>
+                {/* Best Route Summary */}
+                {bestRoute && (
+                  <Card className="mb-4">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center text-lg">
+                        <TrendingUp className="h-5 w-5 mr-2 text-green-500" />
+                        Best Route
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="default">
+                            {bestRoute.dex_id}
+                          </Badge>
+                          <span className="font-medium">
+                            {intearAPI.formatAmount(bestRoute.estimated_amount.amount_out, toToken.decimals)} {toToken.symbol}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Slippage: {bestRoute.has_slippage ? 'Yes' : 'No'}
+                        </div>
+                      </div>
+                      {bestRoute.deadline && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Deadline: {new Date(bestRoute.deadline).toLocaleTimeString()}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Route Selection */}
+                <Card data-testid="card-route-comparison">
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <TrendingUp className="h-5 w-5" />
+                      <span>Select Route</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {routes.map((route, index) => {
+                        const isSelected = route.dex_id === selectedRouteId;
+                        const isBest = bestRoute && route.dex_id === bestRoute.dex_id;
+                        return (
+                          <div 
+                            key={`${route.dex_id}-${index}`} 
+                            onClick={() => handleSelectRoute(route.dex_id)}
+                            className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                              isSelected 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center space-x-2">
+                                <Badge variant={isBest ? "default" : "secondary"}>
+                                  {route.dex_id}
+                                  {isBest && (
+                                    <span className="ml-1 text-xs">(Best)</span>
+                                  )}
+                                </Badge>
+                                <span className="font-medium">
+                                  {intearAPI.formatAmount(route.estimated_amount.amount_out, toToken.decimals)} {toToken.symbol}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                Slippage: {route.has_slippage ? 'Yes' : 'No'}
+                              </div>
+                            </div>
+                            {route.deadline && (
+                              <div className="text-xs text-gray-400 mt-1">
+                                Deadline: {new Date(route.deadline).toLocaleTimeString()}
+                              </div>
+                            )}
+                            {route.worst_case_amount && route.estimated_amount.amount_out !== route.worst_case_amount.amount_out && (
+                              <div className="text-xs text-orange-500 mt-1 flex items-center">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Worst case: {intearAPI.formatAmount(route.worst_case_amount.amount_out, toToken.decimals)} {toToken.symbol}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : amountIn ? (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <AlertCircle className="h-12 w-12 text-gray-400" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No routes available</h3>
+                    <p className="text-gray-500">Try adjusting your swap amount or token pair</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        )}
         {/* Swap Button */}
         <Button
           onClick={executeSwap}
