@@ -3,15 +3,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-// Импортируем плагин
+// Импортируем плагин (убедитесь, что он установлен через package.json)
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
   plugins: [
-    react(),
     // Добавляем плагин nodePolyfills ПЕРЕД другими плагинами
     nodePolyfills({
-      // Включаем полифилы для buffer и util
+      // Включаем полифилы для buffer и других Node.js модулей
       protocolImports: true,
       globals: {
         Buffer: true, // Включить Buffer
@@ -19,6 +18,7 @@ export default defineConfig({
         process: true,
       }
     }),
+    react(),
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
@@ -40,18 +40,22 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    // Попробуем уменьшить размер бандла
-    chunkSizeWarningLimit: 1000, // Увеличиваем лимит для предупреждения
+    // Уберем проблемную часть manualChunks
+    // Если захотите оптимизировать размер бандла позже, можно будет сделать это правильно,
+    // но без указания несуществующих точек входа.
+    // Оставим стандартные настройки или добавим простые manualChunks при необходимости.
+    /*
     rollupOptions: {
-      // Попробуем разделить код на чанки
       output: {
-        manualChunks: {
-          // Разделяем крупные библиотеки
-          'near-api': ['near-api-js'],
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'], // если используете
-        }
+        // Пример простого manualChunks (опционально):
+        // manualChunks: {
+        //   'vendor': ['react', 'react-dom'], // Группируем основные зависимости
+        //   'near': ['near-api-js', '@hot-labs/near-connect'] // Группируем NEAR-зависимости
+        // }
+        // НО НЕ ДОБАВЛЯЕМ react-router-dom, если он у вас не используется как точка входа!
       }
     }
+    */
   },
   server: {
     fs: {
