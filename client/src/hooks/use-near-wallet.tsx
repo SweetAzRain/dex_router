@@ -271,12 +271,24 @@ export function NearWalletProvider({ children }: { children: ReactNode }) {
     }
     try {
       addActivityLog(`Signing message for recipient: ${params.recipient}`, 'info');
+      console.log("useNearWallet.signMessage called with params:", params); // <-- ЛОГ 1: Входные параметры
       // Получаем экземпляр уже подключенного кошелька
       const wallet = await selector.wallet();
+      console.log("useNearWallet.signMessage got wallet instance:", wallet); // <-- ЛОГ 2: Экземпляр кошелька
+      console.log("Wallet type/name:", (wallet as any).type, (wallet as any).manifest?.name); // <-- ЛОГ 3: Тип кошелька
       
       // Выполняем подписание сообщения
       // Убедитесь, что params соответствует SignMessageParams из near-connect
       const result = await wallet.signMessage(params);
+      console.log("useNearWallet.signMessage raw result from wallet.signMessage:", result); // <-- ЛОГ 4: Результат от кошелька
+
+      if (!result) {
+       const errorMsg = "signMessage returned null or undefined. Wallet might not support this feature or user cancelled.";
+       console.error(errorMsg);
+       addActivityLog(errorMsg, 'error');
+       throw new Error(errorMsg);
+      }
+
       addActivityLog('Message signed successfully', 'success');
       return result;
     } catch (error: any) {
