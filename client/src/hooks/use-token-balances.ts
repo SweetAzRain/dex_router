@@ -21,7 +21,7 @@ interface TokenBalances {
 }
 
 // Инициализация RPC провайдера
-const RPC_PROVIDER = new providers.JsonRpcProvider({ url: 'https://rpc.mainnet.near.org' });
+const RPC_PROVIDER = new providers.JsonRpcProvider({ url: 'https://rpc.mainnet.fastnear.com' });
 
 /**
  * Безопасно преобразует баланс из минимальных единиц в человекочитаемый формат.
