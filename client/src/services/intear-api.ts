@@ -1,39 +1,64 @@
 // client/src/services/intear-api.ts (или соответствующий путь)
 import { RouteRequest, RouteInfo } from '@shared/schema'; // Убедитесь, что путь корректен
 
-// ИСПРАВЛЕНО: Используем прямой URL API Intear, убраны лишние пробелы
-const INTEAR_API_BASE = 'https://router.intear.tech';
+// ИСПРАВЛЕНО СНОВА: Используем правильный URL API Intear из последней документации
+// const INTEAR_API_BASE = 'https://api.intear.tech'; // НЕПРАВИЛЬНО (по предыдущей версии документации)
+const INTEAR_API_BASE = 'https://router.intear.tech'; // Правильный хост
+// const path = '/routes'; // НЕПРАВИЛЬНЫЙ путь из логов
+const path = '/route'; // ПРАВИЛЬНЫЙ путь (единственное число) из последней документации
 
 export class IntearAPIService {
   async getRoutes(request: RouteRequest): Promise<RouteInfo[]> {
     try {
       console.log('Requesting routes directly from Intear API:', request);
       
-      // ИСПРАВЛЕНО: Прямой вызов API Intear, без внутреннего прокси
-      const response = await fetch(`${INTEAR_API_BASE}/route`, {
+      // ИСПРАВЛЕНО СНОВА: Прямой вызов правильного API Intear
+      // const response = await fetch(`${INTEAR_API_BASE}/routes`, { ... }); // Старый путь
+      const response = await fetch(`${INTEAR_API_BASE}${path}`, { // Новый правильный путь
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           // Если API Intear требует API-ключ, добавьте его в заголовки:
           // 'X-API-KEY': 'YOUR_INTEAR_API_KEY_HERE', 
+          // ИЛИ 'Authorization': 'Bearer YOUR_API_KEY_HERE' - в зависимости от их требований
         },
         body: JSON.stringify(request),
       });
       
+      // Проверим Content-Type ответа
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+          const errorText = await response.text();
+          console.error('Intear API non-JSON response:', response.status, response.statusText, errorText);
+          throw new Error(`Intear API error: ${response.status} - ${response.statusText}. Response: ${errorText.substring(0, 200)}...`);
+      }
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Intear API error response:', errorText);
-        throw new Error(`Intear API error: ${response.status} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({})); // Безопасное получение JSON ошибки
+        console.error('Intear API error response:', response.status, errorData);
+        const errorMessage = errorData.detail || errorData.message || errorData.error || 'Unknown error';
+        throw new Error(`Intear API error: ${response.status} - ${errorMessage}`);
       }
       
       const routes = await response.json();
       console.log('Received routes from Intear API:', routes);
-      // Убедиться, что возвращается массив
-      return Array.isArray(routes) ? routes : [routes];
+      // API возвращает объект с полем data, содержащим массив маршрутов
+      // См. пример ответа в документации: { "data": [ ...массив RouteInfo... ] }
+      if (routes && Array.isArray(routes.data)) {
+          return routes.data;
+      } else if (Array.isArray(routes)) {
+          // На случай, если API вернул массив напрямую
+          return routes;
+      } else {
+          console.warn('Unexpected response format from Intear API:', routes);
+          // Попробуем вернуть пустой массив, чтобы не ломать UI
+          return [];
+      }
     } catch (error) {
       console.error('Failed to fetch routes from Intear API:', error);
       // Более информативная ошибка
-      throw new Error(`Failed to fetch swap routes from Intear API. Please try again. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const userMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to fetch swap routes from Intear API. Please try again. Error: ${userMessage}`);
     }
   }
 
