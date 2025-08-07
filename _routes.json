@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "exclude": [],
+  "include": ["/*"],
+  "rewrite": {
+    "dynamic": "^(?!/api/).*",
+    "to": "/index.html"
+  }
+}
