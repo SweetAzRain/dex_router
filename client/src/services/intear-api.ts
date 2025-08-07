@@ -10,7 +10,7 @@ export class IntearAPIService {
       console.log('Requesting routes directly from Intear API:', request);
       
       // ИСПРАВЛЕНО: Прямой вызов API Intear, без внутреннего прокси
-      const response = await fetch(`${INTEAR_API_BASE}/routes`, {
+      const response = await fetch(`${INTEAR_API_BASE}/route`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
